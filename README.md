@@ -6,11 +6,15 @@ A Streamlit app that uses a **LangGraph agentic workflow** to apply natural-lang
 
 ## Screenshot
 
-_Example: "change the horse color to white"_
+### Before & After
 
-![App screenshot](Screenshot%202026-03-08%20at%2012.37.10%20PM.png)
+| Before | After |
+|:---:|:---:|
+| ![Before](example/beginning.png) | ![After](example/after_edit.png) |
 
-> Add your before/after screenshots here — place image files in this folder and reference them with `![label](filename.png)`.
+_Prompt: "change the horse color to white" — original horse photo (left) and the AI-edited result (right)._
+
+_Original photo via [Wikipedia — Horse](https://en.wikipedia.org/wiki/Horse)._
 
 ---
 
@@ -108,15 +112,6 @@ The original implementation padded images to 1024 × 1024 with white. For prompt
 ### Prerequisites
 - Python 3.10–3.12
 - OpenAI API key with access to `gpt-4o` and `dall-e-2`
-
-### Install
-
-```bash
-# From the repo root
-pip install -e .
-# or with uv:
-uv sync
-```
 
 ### Configure
 
