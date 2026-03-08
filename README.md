@@ -14,7 +14,7 @@ A Streamlit app that uses a **LangGraph agentic workflow** to apply natural-lang
 
 _Prompt: "change the horse color to white" — original horse photo (left) and the AI-edited result (right)._
 
-_Original photo via [Wikipedia — Horse](https://en.wikipedia.org/wiki/Horse)._
+_Original horse photo from [Wikipedia — Horse](https://en.wikipedia.org/wiki/Horse)._
 
 ---
 
