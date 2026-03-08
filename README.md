@@ -143,6 +143,12 @@ streamlit run app.py
 
 ---
 
+## Acknowledgements
+
+[Claude Code](https://claude.ai/claude-code) (Anthropic's CLI) was used to assist with debugging during development.
+
+---
+
 ## File Structure
 
 ```
