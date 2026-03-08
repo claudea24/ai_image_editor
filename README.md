@@ -124,7 +124,7 @@ pip install -r requirements.txt
 
 ### Configure
 
-Create `src/project2/.env`:
+Create `.env`:
 
 ```
 OPENAI_API_KEY=sk-...
@@ -134,17 +134,6 @@ OPENAI_API_KEY=sk-...
 
 ```bash
 streamlit run app.py
-```
-
-### Deploy to Streamlit Cloud
-
-1. Push the repo to GitHub (ensure `requirements.txt` is included; `.env` should be in `.gitignore`)
-2. Go to [share.streamlit.io](https://share.streamlit.io) and connect your repo
-3. Set the main file path to `src/project2/app.py`
-4. Add your API key under **Settings → Secrets**:
-
-```toml
-OPENAI_API_KEY = "sk-..."
 ```
 
 ---
