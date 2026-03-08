@@ -497,6 +497,15 @@ if "last_status" not in st.session_state:
     st.session_state.last_status = None   # dict: {verified, feedback, prompt_history, attempts}
 if "uploaded_file_id" not in st.session_state:
     st.session_state.uploaded_file_id = None
+# Pending workflow: decouple button click from execution so old result is cleared first
+if "_workflow_pending" not in st.session_state:
+    st.session_state._workflow_pending = False
+if "_workflow_prompt" not in st.session_state:
+    st.session_state._workflow_prompt = ""
+if "_workflow_max_attempts" not in st.session_state:
+    st.session_state._workflow_max_attempts = 2
+if "_workflow_satisfaction" not in st.session_state:
+    st.session_state._workflow_satisfaction = 7.0
 
 # ── Sidebar: upload + controls ──
 with st.sidebar:
@@ -514,43 +523,51 @@ with st.sidebar:
             st.session_state.history = []
             st.session_state.last_status = None
 
-    st.markdown("<div style='margin-top:1.2rem; font-size:0.75rem; letter-spacing:1px; color:#6666aa; text-transform:uppercase;'>Edit Instruction</div>", unsafe_allow_html=True)
-    prompt = st.text_input("Prompt", placeholder="e.g. change the horse color to white", label_visibility="collapsed")
+    with st.form("edit_form"):
+        st.markdown("<div style='margin-top:1.2rem; font-size:0.75rem; letter-spacing:1px; color:#6666aa; text-transform:uppercase;'>Edit Instruction</div>", unsafe_allow_html=True)
+        prompt = st.text_area("Prompt", placeholder="e.g. change the background to white",
+                              label_visibility="collapsed", height=80)
 
-    st.markdown("<div style='margin-top:1rem; font-size:0.75rem; letter-spacing:1px; color:#6666aa; text-transform:uppercase;'>Satisfaction Threshold</div>", unsafe_allow_html=True)
-    satisfaction_pct = st.slider("Satisfaction %", 10, 100, 70, step=5, label_visibility="collapsed",
-                                  help="Stop retrying once the result scores at or above this % (e.g. 70 = stop at 7/10)")
-    satisfaction_threshold = satisfaction_pct / 10.0  # convert to 0–10 scale
+        st.markdown("<div style='margin-top:1rem; font-size:0.75rem; letter-spacing:1px; color:#6666aa; text-transform:uppercase;'>Satisfaction Threshold</div>", unsafe_allow_html=True)
+        satisfaction_pct = st.slider("Satisfaction %", 10, 100, 70, step=5, label_visibility="collapsed",
+                                      help="Stop retrying once the result scores at or above this % (e.g. 70 = stop at 7/10)")
+        satisfaction_threshold = satisfaction_pct / 10.0  # convert to 0–10 scale
 
-    st.markdown("<div style='margin-top:1rem; font-size:0.75rem; letter-spacing:1px; color:#6666aa; text-transform:uppercase;'>Max Retry Attempts</div>", unsafe_allow_html=True)
-    max_attempts = st.slider("Max retries", 1, 10, 2, label_visibility="collapsed")
+        st.markdown("<div style='margin-top:1rem; font-size:0.75rem; letter-spacing:1px; color:#6666aa; text-transform:uppercase;'>Max Retry Attempts</div>", unsafe_allow_html=True)
+        max_attempts = st.slider("Max retries", 1, 10, 2, label_visibility="collapsed")
 
-    apply_clicked = st.button("Apply Edit", use_container_width=True)
+        apply_clicked = st.form_submit_button(
+            "Apply Edit", use_container_width=True,
+            disabled=st.session_state._workflow_pending
+        )
 
-    # "Save & Continue" — only show when there's a result to commit
+    _generating = st.session_state._workflow_pending
+
+    # "Save & Continue" — only show when there's a result to commit and not generating
     save_and_continue = False
-    if st.session_state.get("result_image") is not None:
+    if st.session_state.get("result_image") is not None and not _generating:
         save_and_continue = st.button("✓ Save Edit & Continue", use_container_width=True,
                                       type="primary")
 
     st.markdown("---")
 
-    # Undo / Download
-    col_undo, col_dl = st.columns(2)
-    with col_undo:
-        if st.button("↩ Undo", use_container_width=True) and st.session_state.history:
-            st.session_state.current_image = st.session_state.history.pop()
-            st.session_state.result_image = None
-            st.session_state.last_status = None
-            st.rerun()
-    with col_dl:
-        export_img = st.session_state.result_image or st.session_state.current_image
-        if export_img:
-            dl_buf = io.BytesIO()
-            export_img.save(dl_buf, format="PNG")
-            st.download_button("↓ Save", data=dl_buf.getvalue(),
-                               file_name="edited.png", mime="image/png",
-                               use_container_width=True)
+    # Undo / Download — hidden while generating
+    if not _generating:
+        col_undo, col_dl = st.columns(2)
+        with col_undo:
+            if st.button("↩ Undo", use_container_width=True) and st.session_state.history:
+                st.session_state.current_image = st.session_state.history.pop()
+                st.session_state.result_image = None
+                st.session_state.last_status = None
+                st.rerun()
+        with col_dl:
+            export_img = st.session_state.result_image or st.session_state.current_image
+            if export_img:
+                dl_buf = io.BytesIO()
+                export_img.save(dl_buf, format="PNG")
+                st.download_button("↓ Save", data=dl_buf.getvalue(),
+                                   file_name="edited.png", mime="image/png",
+                                   use_container_width=True)
 
 # ── Hero ──
 st.title("🖼️ AI Photo Editor")
@@ -568,9 +585,26 @@ with col_orig:
         st.markdown('<div class="placeholder">Upload an image to get started</div>', unsafe_allow_html=True)
 
 with col_result:
-    st.markdown('<div class="card"><div class="card-label">Result</div></div>', unsafe_allow_html=True)
+    _last = st.session_state.last_status
+    _below_threshold = _last and not _last.get("verified")
+    _thr = _last.get("satisfaction_threshold", st.session_state._workflow_satisfaction) if _last else None
+    label_html = (
+        '<div class="card-label" style="color:#c0392b;">Result — Below Threshold</div>'
+        if _below_threshold else
+        '<div class="card-label">Result</div>'
+    )
+    st.markdown(f'<div class="card">{label_html}</div>', unsafe_allow_html=True)
     if st.session_state.result_image:
         st.image(st.session_state.result_image, use_container_width=True)
+        if _below_threshold:
+            st.markdown(
+                f'<div style="background:#fff0f0;border:1px solid #e74c3c;border-radius:8px;'
+                f'padding:0.5rem 0.8rem;margin-top:0.4rem;color:#c0392b;font-size:0.85rem;">'
+                f'⚠️ Best result shown — score {_last["best_score"]:.1f}/10 did not reach '
+                f'the {_thr * 10:.0f}% threshold. Save & Continue to use it anyway, or retry.'
+                f'</div>',
+                unsafe_allow_html=True
+            )
     else:
         st.markdown('<div class="placeholder">Your edited image will appear here</div>', unsafe_allow_html=True)
 
@@ -578,22 +612,40 @@ with col_result:
 if st.session_state.last_status:
     s = st.session_state.last_status
     st.divider()
-    acc = s.get("accepted_attempts", s["attempts"])
     total = s["attempts"]
-    rejected = total - acc
-    attempt_label = f"{acc} accepted / {total} total ({rejected} rejected)"
+    passed_gates = s.get("accepted_attempts", total)  # passed realism+preservation hard gates
+    rejected_gates = total - passed_gates              # rejected by hard gates
+    # "Accepted" means the final result met the satisfaction threshold and was shown
+    final_accepted = 1 if s["verified"] else 0
+    attempt_label = (
+        f"{final_accepted} accepted / {total} total "
+        f"({rejected_gates} rejected by quality gates)"
+    )
     if s["verified"]:
         st.success(f"Score {s['best_score']:.1f}/10 — Verified — {attempt_label}")
     else:
         st.warning(f"Best score {s['best_score']:.1f}/10 — {attempt_label}")
 
     if s.get("score_history"):
+        threshold = s.get("satisfaction_threshold", st.session_state._workflow_satisfaction)
         with st.expander("Reward score history (RL progress)"):
-            for entry in s["score_history"]:
+            for i, entry in enumerate(s["score_history"]):
                 attempt, score, fb = entry
-                is_rejected = fb.startswith("REJECTED")
+                is_rejected_gate = fb.startswith("REJECTED")
+                below_threshold = not is_rejected_gate and score < threshold
+                # Only the very last entry can be "accepted" (shown as result), and only if verified
+                is_final_accepted = (
+                    not is_rejected_gate
+                    and i == len(s["score_history"]) - 1
+                    and s["verified"]
+                )
                 bar = "█" * int(score) + "░" * (10 - int(score))
-                label = f"**{'❌ Rejected' if is_rejected else f'Accepted #{attempt}'}**"
+                if is_rejected_gate:
+                    label = "**❌ Rejected by quality gates**"
+                elif is_final_accepted:
+                    label = f"**✅ Accepted (attempt #{attempt})**"
+                else:
+                    label = f"**⚠️ Below threshold (attempt #{attempt})**"
                 st.markdown(f"{label} `{bar}` {score:.1f}/10 — {fb}")
 
     if len(s.get("prompt_history", [])) >= 1:
@@ -603,21 +655,15 @@ if st.session_state.last_status:
                 label = "Rephrased for DALL-E" if i == 0 else f"Refined attempt {i + 1}"
                 st.markdown(f"**{label}:** {p}")
 
-# ── History strip ──
-if st.session_state.history:
+# ── Generating indicator ──
+if st.session_state._workflow_pending:
     st.divider()
-    st.markdown('<div class="history-label">Edit History — click Restore to go back</div>', unsafe_allow_html=True)
-    cols = st.columns(min(len(st.session_state.history), 6))
-    for i, hist_img in enumerate(reversed(st.session_state.history)):
-        idx = len(st.session_state.history) - 1 - i
-        with cols[i]:
-            st.image(hist_img, use_container_width=True)
-            if st.button("Restore", key=f"restore_{i}"):
-                st.session_state.history = st.session_state.history[:idx]
-                st.session_state.current_image = hist_img
-                st.session_state.result_image = None
-                st.session_state.last_status = None
-                st.rerun()
+    st.markdown(
+        '<div style="text-align:center;padding:1rem;color:#6666aa;font-size:0.95rem;">'
+        '⏳ Generating your edit — this may take a moment…'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
 # ── Save & Continue: commit result as new base ──
 if save_and_continue and st.session_state.result_image is not None:
@@ -627,79 +673,137 @@ if save_and_continue and st.session_state.result_image is not None:
     st.session_state.last_status = None
     st.rerun()
 
-# ── Run workflow on button click ──
+# ── On button click: stash params, clear old result, rerun so UI refreshes before workflow ──
 if apply_clicked and prompt and st.session_state.current_image:
-    # DALL-E 2 requires image and mask to be the same square size (1024x1024).
-    # Resize preserving aspect ratio, then center-pad to 1024x1024.
-    # Track pad offsets so we can crop the result back to original dimensions.
-    img = st.session_state.current_image.convert("RGBA")
-    img.thumbnail((1024, 1024), Image.LANCZOS)
-    orig_w, orig_h = img.width, img.height
-    pad_x = (1024 - orig_w) // 2
-    pad_y = (1024 - orig_h) // 2
-    padded = Image.new("RGBA", (1024, 1024), (255, 255, 255, 255))
-    padded.paste(img, (pad_x, pad_y))
-    buf = io.BytesIO()
-    padded.save(buf, format="PNG")
-    image_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    st.session_state._workflow_prompt = prompt
+    st.session_state._workflow_max_attempts = max_attempts
+    st.session_state._workflow_satisfaction = satisfaction_threshold
+    st.session_state._workflow_pending = True
+    st.session_state.result_image = None
+    st.session_state.last_status = None
+    st.rerun()
 
-    initial_state: EditState = {
-        "image_b64": image_b64,
-        "mask_b64": None,
-        "edit_inside": True,       # set properly by prepare_node
-        "original_prompt": prompt,
-        "prompt": prompt,
-        "prompt_history": [prompt],
-        "attempts": 0,
-        "accepted_attempts": 0,
-        "max_attempts": max_attempts,
-        "edited_b64": None,
-        "verified": False,
-        "feedback": "",
-        "best_b64": None,
-        "best_score": 0.0,
-        "score_history": [],
-        "satisfaction_threshold": satisfaction_threshold,
-        "orig_w": orig_w,
-        "orig_h": orig_h,
-        "pad_x": pad_x,
-        "pad_y": pad_y,
-    }
+# ── Run workflow (on the fresh render after result was cleared) ──
+if st.session_state._workflow_pending and st.session_state.current_image:
+    st.session_state._workflow_pending = False
+    prompt = st.session_state._workflow_prompt
+    max_attempts = st.session_state._workflow_max_attempts
+    satisfaction_threshold = st.session_state._workflow_satisfaction
+    if prompt:
+        # DALL-E 2 requires image and mask to be the same square size (1024x1024).
+        # Resize preserving aspect ratio, then center-pad to 1024x1024.
+        # Use a neutral gray pad so edits like "change background to white" aren't
+        # trivially satisfied by the white border and inflate the score.
+        # Track pad offsets so we can crop the result back to original dimensions.
+        img = st.session_state.current_image.convert("RGBA")
+        img.thumbnail((1024, 1024), Image.LANCZOS)
+        orig_w, orig_h = img.width, img.height
+        pad_x = (1024 - orig_w) // 2
+        pad_y = (1024 - orig_h) // 2
+        padded = Image.new("RGBA", (1024, 1024), (128, 128, 128, 255))
+        padded.paste(img, (pad_x, pad_y))
+        buf = io.BytesIO()
+        padded.save(buf, format="PNG")
+        image_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
-    with st.spinner("Locating subject, editing, and verifying..."):
-        try:
-            workflow = build_workflow()
-            # Rejected attempts don't count toward max_attempts but still consume graph steps.
-            # Safety cap is 4x max_attempts total DALL-E calls, each cycle = 6 nodes.
-            recursion_limit = max_attempts * 4 * 6 + 20
-            final_state = workflow.invoke(
-                initial_state,
-                config={"recursion_limit": recursion_limit}
-            )
-        except Exception as e:
-            st.error(f"Workflow error: {e}")
-            final_state = None
-
-    # Use best_b64 (highest-reward result), fall back to edited_b64
-    result_b64 = final_state.get("best_b64") or final_state.get("edited_b64") if final_state else None
-    if final_state and result_b64:
-        result_full = Image.open(io.BytesIO(base64.b64decode(result_b64)))
-        # Crop away the padding to restore original image dimensions
-        px, py = final_state["pad_x"], final_state["pad_y"]
-        ow, oh = final_state["orig_w"], final_state["orig_h"]
-        edited_image = result_full.crop((px, py, px + ow, py + oh))
-        # Don't update current_image — user must explicitly click "Save & Continue"
-        st.session_state.result_image = edited_image
-        st.session_state.last_status = {
-            "verified": final_state["verified"],
-            "feedback": final_state["feedback"],
-            "attempts": final_state["attempts"],
-            "accepted_attempts": final_state["accepted_attempts"],
-            "prompt_history": final_state["prompt_history"],
-            "original_prompt": final_state["original_prompt"],
-            "best_score": final_state["best_score"],
-            "score_history": final_state["score_history"]
+        initial_state: EditState = {
+            "image_b64": image_b64,
+            "mask_b64": None,
+            "edit_inside": True,       # set properly by prepare_node
+            "original_prompt": prompt,
+            "prompt": prompt,
+            "prompt_history": [prompt],
+            "attempts": 0,
+            "accepted_attempts": 0,
+            "max_attempts": max_attempts,
+            "edited_b64": None,
+            "verified": False,
+            "feedback": "",
+            "best_b64": None,
+            "best_score": 0.0,
+            "score_history": [],
+            "satisfaction_threshold": satisfaction_threshold,
+            "orig_w": orig_w,
+            "orig_h": orig_h,
+            "pad_x": pad_x,
+            "pad_y": pad_y,
         }
-        st.rerun()
-    else:
-        st.error("No image was returned. Try a different prompt or image.")
+
+        with st.spinner("Locating subject, editing, and verifying..."):
+            try:
+                workflow = build_workflow()
+                # Rejected attempts don't count toward max_attempts but still consume graph steps.
+                # Safety cap is 4x max_attempts total DALL-E calls, each cycle = 6 nodes.
+                recursion_limit = max_attempts * 4 * 6 + 20
+                final_state = workflow.invoke(
+                    initial_state,
+                    config={"recursion_limit": recursion_limit}
+                )
+            except Exception as e:
+                st.error(f"Workflow error: {e}")
+                final_state = None
+
+        if final_state and final_state.get("verified"):
+            result_b64 = final_state.get("best_b64") or final_state.get("edited_b64")
+            result_full = Image.open(io.BytesIO(base64.b64decode(result_b64)))
+            # Crop away the padding to restore original image dimensions
+            px, py = final_state["pad_x"], final_state["pad_y"]
+            ow, oh = final_state["orig_w"], final_state["orig_h"]
+            edited_image = result_full.crop((px, py, px + ow, py + oh))
+            # Don't update current_image — user must explicitly click "Save & Continue"
+            st.session_state.result_image = edited_image
+            st.session_state.last_status = {
+                "verified": True,
+                "feedback": final_state["feedback"],
+                "attempts": final_state["attempts"],
+                "accepted_attempts": final_state["accepted_attempts"],
+                "prompt_history": final_state["prompt_history"],
+                "original_prompt": final_state["original_prompt"],
+                "best_score": final_state["best_score"],
+                "score_history": final_state["score_history"],
+                "satisfaction_threshold": satisfaction_threshold,
+            }
+            st.rerun()
+        elif final_state:
+            best_score = final_state.get("best_score", 0.0)
+            best_b64 = final_state.get("best_b64") or final_state.get("edited_b64")
+            if best_b64:
+                best_full = Image.open(io.BytesIO(base64.b64decode(best_b64)))
+                px, py = final_state["pad_x"], final_state["pad_y"]
+                ow, oh = final_state["orig_w"], final_state["orig_h"]
+                st.session_state.result_image = best_full.crop((px, py, px + ow, py + oh))
+            else:
+                st.session_state.result_image = None
+            st.session_state.last_status = {
+                "verified": False,
+                "feedback": final_state["feedback"],
+                "attempts": final_state["attempts"],
+                "accepted_attempts": final_state["accepted_attempts"],
+                "prompt_history": final_state["prompt_history"],
+                "original_prompt": final_state["original_prompt"],
+                "best_score": best_score,
+                "score_history": final_state["score_history"],
+                "satisfaction_threshold": satisfaction_threshold,
+            }
+            st.rerun()
+        else:
+            st.error("No image was returned. Try a different prompt or image.")
+
+# ── History strip (always at the very bottom) ──
+if st.session_state.history:
+    st.divider()
+    st.markdown('<div class="history-label">Edit History — click Restore to go back</div>', unsafe_allow_html=True)
+    cols = st.columns(min(len(st.session_state.history), 8))
+    for i, hist_img in enumerate(reversed(st.session_state.history)):
+        idx = len(st.session_state.history) - 1 - i
+        with cols[i]:
+            # Show small fixed-width thumbnail
+            thumb = hist_img.copy()
+            thumb.thumbnail((120, 120), Image.LANCZOS)
+            st.image(thumb, width=100)
+            if st.button("Restore", key=f"restore_{i}"):
+                st.session_state.history = st.session_state.history[:idx]
+                st.session_state.current_image = hist_img
+                st.session_state.result_image = None
+                st.session_state.last_status = None
+                st.rerun()
