@@ -2,6 +2,8 @@
 
 A Streamlit app that uses a **LangGraph agentic workflow** to apply natural-language edits to photos. Describe what you want changed - the agent locates the subject, generates the edit with DALL-E 2, scores the result, and retries automatically until the edit meets your satisfaction threshold.
 
+**Live demo:** [claude24-ai-image-editor.streamlit.app](https://claude24-ai-image-editor.streamlit.app/)
+
 ---
 
 ## Screenshot
@@ -113,6 +115,13 @@ The original implementation padded images to 1024 × 1024 with white. For prompt
 - Python 3.10–3.12
 - OpenAI API key with access to `gpt-4o` and `dall-e-2`
 
+### Install
+
+```bash
+cd src/project2
+pip install -r requirements.txt
+```
+
 ### Configure
 
 Create `src/project2/.env`:
@@ -124,8 +133,18 @@ OPENAI_API_KEY=sk-...
 ### Run
 
 ```bash
-cd src/project2
 streamlit run app.py
+```
+
+### Deploy to Streamlit Cloud
+
+1. Push the repo to GitHub (ensure `requirements.txt` is included; `.env` should be in `.gitignore`)
+2. Go to [share.streamlit.io](https://share.streamlit.io) and connect your repo
+3. Set the main file path to `src/project2/app.py`
+4. Add your API key under **Settings → Secrets**:
+
+```toml
+OPENAI_API_KEY = "sk-..."
 ```
 
 ---
@@ -158,7 +177,8 @@ src/project2/
 │   ├── horse.jpg         # Original 
 │   ├── beginning.png     # Before 
 │   └── after_edit.png    # After 
-├── .env                  # API keys (not commited)
+├── .env                  # API keys (not committed)
 ├── .gitignore
+├── requirements.txt      # Python dependencies
 └── README.md
 ```

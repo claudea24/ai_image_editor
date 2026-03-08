@@ -468,7 +468,7 @@ def build_workflow():
 # ---------------------------
 # Streamlit UI
 # ---------------------------
-st.set_page_config(page_title="AI Photo Editor", layout="wide", page_icon="🖼️")
+st.set_page_config(page_title="AI Image Editor", layout="wide", page_icon="🖼️")
 
 st.markdown("""
 <style>
@@ -509,7 +509,7 @@ if "_workflow_satisfaction" not in st.session_state:
 
 # ── Sidebar: upload + controls ──
 with st.sidebar:
-    st.markdown("<div style='padding:1rem 0 0.5rem'><span style='font-size:1.3rem'>✦</span> <b>AI Photo Editor</b></div>", unsafe_allow_html=True)
+    st.markdown("<div style='padding:1rem 0 0.5rem'><span style='font-size:1.3rem'>✦</span> <b>AI Image Editor</b></div>", unsafe_allow_html=True)
     st.markdown("---")
 
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
@@ -570,7 +570,7 @@ with st.sidebar:
                                    use_container_width=True)
 
 # ── Hero ──
-st.title("🖼️ AI Photo Editor")
+st.title("🖼️ AI Image Editor")
 st.caption("Describe your edit — the agent locates the subject, edits only that area, and verifies the result.")
 st.divider()
 
