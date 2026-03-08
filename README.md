@@ -1,6 +1,6 @@
 # AI Photo Editor
 
-A Streamlit app that uses a **LangGraph agentic workflow** to apply natural-language edits to photos. Describe what you want changed — the agent locates the subject, generates the edit with DALL-E 2, scores the result, and retries automatically until the edit meets your satisfaction threshold.
+A Streamlit app that uses a **LangGraph agentic workflow** to apply natural-language edits to photos. Describe what you want changed - the agent locates the subject, generates the edit with DALL-E 2, scores the result, and retries automatically until the edit meets your satisfaction threshold.
 
 ---
 
@@ -147,8 +147,12 @@ streamlit run app.py
 
 ```
 src/project2/
-├── app.py          # Full Streamlit app + LangGraph workflow
-├── horse.jpg       # Sample image
-├── .env            # API keys (not committed)
+├── app.py                # Streamlit app + LangGraph workflow
+├── example/
+│   ├── horse.jpg         # Original 
+│   ├── beginning.png     # Before 
+│   └── after_edit.png    # After 
+├── .env                  # API keys (not commited)
+├── .gitignore
 └── README.md
 ```
