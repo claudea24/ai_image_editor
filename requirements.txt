@@ -1,5 +1,4 @@
 streamlit
 openai
 pillow
-python-dotenv
 langgraph

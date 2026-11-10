@@ -122,13 +122,13 @@ cd src/project2
 pip install -r requirements.txt
 ```
 
-### Configure
+### API key (bring your own)
 
-Create `.env`:
+No `.env` needed. When the app opens, paste your own OpenAI API key into the **Your OpenAI API Key** field in the sidebar. You can get one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
 
-```
-OPENAI_API_KEY=sk-...
-```
+- The key is checked with OpenAI first. **Apply Edit** stays disabled until the key is valid.
+- The key lives only in your browser session's memory. It is never written to disk, logged, or shared with other visitors.
+- Edits are billed to your OpenAI account (GPT-4o + DALL·E 2).
 
 ### Run
 
@@ -166,7 +166,7 @@ src/project2/
 │   ├── horse.jpg         # Original 
 │   ├── beginning.png     # Before 
 │   └── after_edit.png    # After 
-├── .env                  # API keys (not committed)
+
 ├── .gitignore
 ├── requirements.txt      # Python dependencies
 └── README.md

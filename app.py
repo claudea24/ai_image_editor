@@ -5,17 +5,34 @@ import re
 import base64
 import tempfile
 import io
-from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, AuthenticationError
 from PIL import Image
 from typing import TypedDict, Optional
 from langgraph.graph import StateGraph, END
 
 # ---------------------------
-# Load API key
+# OpenAI client (bring your own key)
 # ---------------------------
-load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Each visitor pastes their own OpenAI API key in the sidebar. The key lives only in
+# their Streamlit session (memory) for this browser tab. It is never written to disk,
+# logged, or shared with other visitors.
+
+def get_client() -> OpenAI:
+    api_key = st.session_state.get("openai_api_key", "").strip()
+    if not api_key:
+        raise RuntimeError("Please enter your OpenAI API key in the sidebar.")
+    return OpenAI(api_key=api_key)
+
+
+def validate_key(api_key: str) -> Optional[str]:
+    """Return None if the key works, otherwise a short error message."""
+    try:
+        OpenAI(api_key=api_key).models.list()
+        return None
+    except AuthenticationError:
+        return "That API key was rejected by OpenAI. Double-check it and try again."
+    except Exception as e:  # network issues etc.
+        return f"Could not verify the key: {type(e).__name__}"
 
 # ---------------------------
 # LangGraph: State & Nodes
@@ -48,7 +65,7 @@ class EditState(TypedDict):
 
 def rephrase_prompt_node(state: EditState) -> EditState:
     """Rewrite the user's prompt into a well-engineered DALL-E 2 inpainting prompt."""
-    response = client.chat.completions.create(
+    response = get_client().chat.completions.create(
         model="gpt-4o",
         messages=[{
             "role": "user",
@@ -83,7 +100,7 @@ def prepare_node(state: EditState) -> EditState:
     edit_inside=True  → horse color change: make horse bbox transparent, background opaque
     edit_inside=False → background change:  make horse bbox opaque, background transparent
     """
-    response = client.chat.completions.create(
+    response = get_client().chat.completions.create(
         model="gpt-4o",
         messages=[{
             "role": "user",
@@ -159,7 +176,7 @@ def edit_node(state: EditState) -> EditState:
         mask_tmp.write(mask_bytes); mask_tmp.flush(); mask_tmp.close()
 
         with open(img_tmp.name, "rb") as img_f, open(mask_tmp.name, "rb") as mask_f:
-            response = client.images.edit(
+            response = get_client().images.edit(
                 model="dall-e-2",
                 image=img_f,
                 mask=mask_f,
@@ -203,7 +220,7 @@ def score_node(state: EditState) -> EditState:
         return {**state, "verified": False, "feedback": "No image returned from DALL-E.",
                 "score_history": state["score_history"] + [(state["accepted_attempts"], 0, "No image")]}
 
-    response = client.chat.completions.create(
+    response = get_client().chat.completions.create(
         model="gpt-4o",
         messages=[{
             "role": "user",
@@ -340,7 +357,7 @@ def refine_prompt_node(state: EditState) -> EditState:
     generate: 'The horse legs and head rendered in solid white fur, photorealistic'
     rather than a generic restatement of the original instruction.
     """
-    response = client.chat.completions.create(
+    response = get_client().chat.completions.create(
         model="gpt-4o",
         messages=[{
             "role": "user",
@@ -379,7 +396,7 @@ def update_mask_node(state: EditState) -> EditState:
     """
     source_b64 = state["best_b64"] if state["best_b64"] else state["image_b64"]
 
-    response = client.chat.completions.create(
+    response = get_client().chat.completions.create(
         model="gpt-4o",
         messages=[{
             "role": "user",
@@ -512,6 +529,38 @@ with st.sidebar:
     st.markdown("<div style='padding:1rem 0 0.5rem'><span style='font-size:1.3rem'>✦</span> <b>AI Image Editor</b></div>", unsafe_allow_html=True)
     st.markdown("---")
 
+    # ── Bring your own OpenAI key ──
+    st.markdown("<div style='font-size:0.75rem; letter-spacing:1px; color:#6666aa; text-transform:uppercase;'>Your OpenAI API Key</div>", unsafe_allow_html=True)
+    key_input = st.text_input(
+        "OpenAI API key", type="password", placeholder="sk-...",
+        label_visibility="collapsed", key="_api_key_input",
+        help="Used only for this browser session to call GPT-4o and DALL·E 2. Never stored or logged.",
+    )
+    if key_input != st.session_state.get("_validated_key_input"):
+        st.session_state._validated_key_input = key_input
+        st.session_state.openai_api_key = ""
+        st.session_state._key_error = None
+        if key_input.strip():
+            with st.spinner("Checking key..."):
+                err = validate_key(key_input.strip())
+            if err:
+                st.session_state._key_error = err
+            else:
+                st.session_state.openai_api_key = key_input.strip()
+
+    has_key = bool(st.session_state.get("openai_api_key"))
+    if has_key:
+        st.success("Key verified ✓", icon="🔑")
+    elif st.session_state.get("_key_error"):
+        st.error(st.session_state._key_error)
+    else:
+        st.caption(
+            "Paste your own key to run edits. Get one at "
+            "[platform.openai.com/api-keys](https://platform.openai.com/api-keys). "
+            "Edits use your OpenAI credits (DALL·E 2 + GPT-4o, usually a few cents per edit)."
+        )
+    st.markdown("---")
+
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
     if uploaded_file is not None:
         file_id = (uploaded_file.name, uploaded_file.size)
@@ -538,8 +587,10 @@ with st.sidebar:
 
         apply_clicked = st.form_submit_button(
             "Apply Edit", use_container_width=True,
-            disabled=st.session_state._workflow_pending
+            disabled=st.session_state._workflow_pending or not has_key
         )
+        if not has_key:
+            st.caption("Enter a valid OpenAI API key above to enable editing.")
 
     _generating = st.session_state._workflow_pending
 
@@ -674,7 +725,7 @@ if save_and_continue and st.session_state.result_image is not None:
     st.rerun()
 
 # ── On button click: stash params, clear old result, rerun so UI refreshes before workflow ──
-if apply_clicked and prompt and st.session_state.current_image:
+if apply_clicked and has_key and prompt and st.session_state.current_image:
     st.session_state._workflow_prompt = prompt
     st.session_state._workflow_max_attempts = max_attempts
     st.session_state._workflow_satisfaction = satisfaction_threshold
@@ -739,6 +790,11 @@ if st.session_state._workflow_pending and st.session_state.current_image:
                     initial_state,
                     config={"recursion_limit": recursion_limit}
                 )
+            except AuthenticationError:
+                st.session_state.openai_api_key = ""
+                st.session_state._key_error = "Your API key was rejected by OpenAI. Please enter a valid key."
+                st.error("Your OpenAI API key was rejected. Please enter a valid key in the sidebar.")
+                final_state = None
             except Exception as e:
                 st.error(f"Workflow error: {e}")
                 final_state = None
